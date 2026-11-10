@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.venv/
+env/
+venv/
+ENV/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Project specific ignores
+data/
+results/models/
+*.joblib
+
+# Scratch cá nhân
+scratch/
+.vscode/
+.idea/

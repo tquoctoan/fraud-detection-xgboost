@@ -1,0 +1,27 @@
+# Python runtime: 3.14.6
+# Core Data Science & Processing
+numpy==2.5.4
+pandas==3.1.1
+scipy==1.18.1
+pyarrow==26.0.1
+fsspec==2026.9.0
+
+# Machine Learning & Imbalanced Data
+scikit-learn==1.9.1
+xgboost==3.4.1
+imbalanced-learn==0.14.2
+joblib==1.6.0
+
+# Hyperparameter Tuning
+optuna==5.0.0
+
+# Model Explainability & Interpretability
+shap==0.54.1
+
+# Visualization
+matplotlib==3.11.2
+seaborn==0.13.2
+
+# Progress & Interactive Notebook
+tqdm==4.70.1
+ipykernel==7.4.0
