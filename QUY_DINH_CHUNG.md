@@ -1,3 +1,5 @@
+> ⚠️ **Luôn luôn pull code mới từ GitHub trước khi bắt đầu làm:** `git pull origin main`
+
 # QUY ĐỊNH CHUNG: Fraud Detection with XGBoost
 
 Tài liệu này trả lời 4 câu hỏi của mỗi thành viên:
