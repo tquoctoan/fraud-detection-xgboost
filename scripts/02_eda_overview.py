@@ -1,99 +1,132 @@
-"""EDA tổng quan: chất lượng dữ liệu, phân phối lớp, Amount, Time.
-Chỉ đọc train.parquet (không đụng test). Biểu đồ lưu vào figures/."""
+"""Create summary statistics and overview plots from the processed dataset."""
+import sys
 from pathlib import Path
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib
-matplotlib.use("Agg")          # lưu ảnh, không mở cửa sổ
-import matplotlib.pyplot as plt
 import seaborn as sns
 
-ROOT = Path(__file__).resolve().parent.parent
-FIG = ROOT / "figures"
-FIG.mkdir(parents=True, exist_ok=True)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-sns.set_theme(style="whitegrid")
+from src import config
+from src.data import load_processed_full
+
 LABELS = {0: "Bình thường", 1: "Gian lận"}
 
-train = pd.read_parquet(ROOT / "data" / "processed" / "train.parquet")
 
-# ---------- 1. Thông tin chung ----------
-print("=== 1. THÔNG TIN CHUNG ===")
-print("Kích thước:", train.shape)
-print("Tổng giá trị thiếu:", int(train.isna().sum().sum()))
-print("Số dòng trùng:", int(train.duplicated().sum()))
-print("\nKiểu dữ liệu:")
-print(train.dtypes.value_counts())
-print("\nThống kê Time, Amount:")
-print(train[["Time", "Amount"]].describe().round(2))
+def main() -> None:
+    config.ensure_dirs()
+    sns.set_theme(style="whitegrid")
 
-# ---------- 2. Phân phối lớp ----------
-print("\n=== 2. PHÂN PHỐI LỚP ===")
-counts = train["Class"].value_counts().sort_index()
-ratio = counts[0] / counts[1]
-print(counts)
-print("Tỉ lệ gian lận: %.4f%%" % (train["Class"].mean() * 100))
-print("Tỉ lệ mất cân bằng: %d bình thường : 1 gian lận" % round(ratio))
+    df = load_processed_full()
+    if "Time" not in df.columns:
+        raise ValueError("Processed data is missing Time.")
+    if not pd.api.types.is_integer_dtype(df[config.TARGET_COL]):
+        raise ValueError("Processed Class column must have an integer dtype.")
 
-fig, ax = plt.subplots(figsize=(5, 4))
-sns.barplot(x=[LABELS[i] for i in counts.index], y=counts.values, ax=ax,
-            hue=[LABELS[i] for i in counts.index], legend=False)
-ax.set_yscale("log")
-for i, v in enumerate(counts.values):
-    ax.text(i, v, f"{v:,}", ha="center", va="bottom")
-ax.set_ylabel("Số giao dịch (thang log)")
-ax.set_title("Phân phối lớp (tập train)")
-fig.tight_layout()
-fig.savefig(FIG / "eda_class_dist.png", dpi=150)
-plt.close(fig)
+    describe = df.describe().T
+    describe.to_csv(config.METRICS_DIR / "eda_describe.csv", index_label="feature")
 
-# ---------- 3. Amount ----------
-print("\n=== 3. AMOUNT THEO LỚP ===")
-print(train.groupby("Class")["Amount"].describe().round(2))
-print("Số giao dịch Amount = 0:", int((train["Amount"] == 0).sum()))
+    label_counts = (
+        df[config.TARGET_COL]
+        .value_counts()
+        .sort_index()
+        .rename_axis("class")
+        .reset_index(name="count")
+    )
+    label_counts["ratio"] = label_counts["count"] / len(df)
+    label_counts.to_csv(
+        config.METRICS_DIR / "eda_label_counts.csv", index=False
+    )
 
-train["log_Amount"] = np.log1p(train["Amount"])   # log1p để xử lý Amount = 0
-train["Nhãn"] = train["Class"].map(LABELS)
+    plot_labels = [LABELS[int(value)] for value in label_counts["class"]]
+    fig, ax = plt.subplots(figsize=(6, 4))
+    bars = ax.bar(plot_labels, label_counts["count"], color=["#4C78A8", "#E45756"])
+    ax.set_yscale("log")
+    ax.set_ylabel("Số giao dịch (thang log)")
+    ax.set_title("Phân bố nhãn sau khi làm sạch")
+    for bar, count in zip(bars, label_counts["count"]):
+        ax.annotate(
+            f"{count:,}",
+            (bar.get_x() + bar.get_width() / 2, bar.get_height()),
+            ha="center",
+            va="bottom",
+        )
+    fig.tight_layout()
+    fig.savefig(config.FIGURES_DIR / "02_label_distribution.png", dpi=config.FIG_DPI)
+    plt.close(fig)
 
-fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+    plot_data = df[["Amount", config.TARGET_COL]].copy()
+    plot_data["log_amount"] = np.log1p(plot_data["Amount"])
+    plot_data["label"] = plot_data[config.TARGET_COL].map(LABELS)
 
-sns.histplot(train["Amount"], bins=100, ax=axes[0])
-axes[0].set_title("Amount gốc (lệch phải mạnh)")
+    fig, ax = plt.subplots(figsize=(8, 5))
+    sns.histplot(
+        data=plot_data,
+        x="log_amount",
+        hue="label",
+        bins=60,
+        stat="density",
+        common_norm=False,
+        element="step",
+        ax=ax,
+    )
+    ax.set_xlabel("log(1 + Amount)")
+    ax.set_ylabel("Mật độ")
+    ax.set_title("Phân bố Amount trên thang logarit")
+    fig.tight_layout()
+    fig.savefig(config.FIGURES_DIR / "02_amount_hist.png", dpi=config.FIG_DPI)
+    plt.close(fig)
 
-sns.histplot(data=train, x="log_Amount", hue="Nhãn", bins=60,
-             stat="density", common_norm=False, element="step", ax=axes[1])
-axes[1].set_title("log(1 + Amount) theo lớp")
+    fig, ax = plt.subplots(figsize=(7, 5))
+    sns.boxplot(
+        data=plot_data,
+        x="label",
+        y="log_amount",
+        order=[LABELS[0], LABELS[1]],
+        color="#72B7B2",
+        ax=ax,
+    )
+    ax.set_xlabel("")
+    ax.set_ylabel("log(1 + Amount)")
+    ax.set_title("Boxplot Amount theo nhãn (thang logarit)")
+    fig.tight_layout()
+    fig.savefig(config.FIGURES_DIR / "02_amount_box.png", dpi=config.FIG_DPI)
+    plt.close(fig)
 
-sns.boxplot(data=train, x="Nhãn", y="log_Amount", hue="Nhãn", legend=False, ax=axes[2])
-axes[2].set_title("Boxplot log(1 + Amount)")
+    time_data = df[["Time", config.TARGET_COL]].copy()
+    time_data["hour_from_start"] = (time_data["Time"] // 3600).astype("int64")
+    hourly = time_data.groupby("hour_from_start")[config.TARGET_COL].agg(
+        transactions="size", fraud_rate="mean"
+    )
+    fig, count_ax = plt.subplots(figsize=(10, 5))
+    count_ax.bar(hourly.index, hourly["transactions"], color="#4C78A8", alpha=0.8)
+    count_ax.set_xlabel("Giờ kể từ thời điểm bắt đầu (Time // 3600)")
+    count_ax.set_ylabel("Số giao dịch")
+    rate_ax = count_ax.twinx()
+    rate_ax.plot(
+        hourly.index,
+        hourly["fraud_rate"] * 100,
+        color="#E45756",
+        marker="o",
+        markersize=3,
+    )
+    rate_ax.set_ylabel("Tỷ lệ gian lận (%)")
+    count_ax.set_title("Số giao dịch và tỷ lệ gian lận theo Time")
+    fig.tight_layout()
+    fig.savefig(config.FIGURES_DIR / "02_time_dist.png", dpi=config.FIG_DPI)
+    plt.close(fig)
 
-fig.tight_layout()
-fig.savefig(FIG / "eda_amount.png", dpi=150)
-plt.close(fig)
+    print(f"Dataset: {df.shape[0]:,} rows x {df.shape[1]} columns")
+    print(f"Missing values: {int(df.isna().sum().sum())}")
+    print(f"Duplicate rows: {int(df.duplicated().sum())}")
+    print(label_counts.to_string(index=False))
+    print("Saved EDA CSVs to", config.METRICS_DIR)
+    print("Saved EDA figures to", config.FIGURES_DIR)
 
-# ---------- 4. Time ----------
-print("\n=== 4. TIME ===")
-print("Khoảng Time: %.0f giây ≈ %.1f giờ" % (train["Time"].max(), train["Time"].max() / 3600))
 
-train["Hour"] = (train["Time"] // 3600) % 24
-fraud_by_hour = train.groupby("Hour")["Class"].agg(["count", "sum", "mean"])
-fraud_by_hour.columns = ["so_giao_dich", "so_gian_lan", "ty_le_gian_lan"]
-print(fraud_by_hour.round(5))
-
-fig, axes = plt.subplots(1, 2, figsize=(14, 4))
-
-sns.histplot(data=train, x="Hour", hue="Nhãn", bins=24, stat="density",
-             common_norm=False, element="step", ax=axes[0])
-axes[0].set_title("Phân phối giao dịch theo giờ trong ngày")
-axes[0].set_xlabel("Giờ (Time // 3600 % 24)")
-
-axes[1].bar(fraud_by_hour.index, fraud_by_hour["ty_le_gian_lan"] * 100)
-axes[1].set_title("Tỉ lệ gian lận theo giờ (%)")
-axes[1].set_xlabel("Giờ")
-axes[1].set_ylabel("% gian lận")
-
-fig.tight_layout()
-fig.savefig(FIG / "eda_time_hour.png", dpi=150)
-plt.close(fig)
-
-print("\nĐã lưu biểu đồ vào:", FIG)
+if __name__ == "__main__":
+    main()

@@ -1,48 +1,49 @@
+"""Download, validate, deduplicate, split, and save the credit-card data."""
+import logging
+import sys
 from pathlib import Path
+
 import pandas as pd
-import openml
-from sklearn.model_selection import train_test_split
 
-SEED = 42
-ROOT = Path(__file__).resolve().parent.parent      # thư mục gốc project
-OUT_DIR = ROOT / "data" / "processed"
-OUT_DIR.mkdir(parents=True, exist_ok=True)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-# ---------- Bước 1: Tải dữ liệu OpenML 1597 (đủ 31 cột, có Time) ----------
-ds = openml.datasets.get_dataset(1597)
-df, _, _, _ = ds.get_data(include_row_id=True, include_ignore_attribute=True)
+from src import config
+from src.data import clean, load_raw, save_processed, split_data, summarize_preprocess
 
-# Nhãn trên OpenML là chuỗi '0'/'1' → đổi sang int
-df["Class"] = df["Class"].astype(int)
 
-print("Shape gốc:", df.shape)                      # (284807, 31)
-print("Cột:", list(df.columns))
-print(df["Class"].value_counts())                  # 0: 284315, 1: 492
-assert "Time" in df.columns, "Thiếu cột Time"
-assert df.shape == (284807, 31)
+def main() -> None:
+    logging.basicConfig(level=config.LOG_LEVEL, format=config.LOG_FORMAT)
+    config.ensure_dirs()
 
-# ---------- Bước 2: Xóa dòng trùng lặp ----------
-n_dup = df.duplicated().sum()
-print("Số dòng trùng lặp:", n_dup)                 # 1081
-assert n_dup == 1081
+    raw = load_raw()
+    if "Time" not in raw.columns:
+        raise ValueError("Raw dataset is missing Time; refusing to deduplicate incomplete rows.")
+    if raw.shape != (config.EXPECTED_N_RAW, 31):
+        raise ValueError(
+            f"Expected {config.EXPECTED_N_RAW} rows and 31 columns, got {raw.shape}."
+        )
 
-df = df.drop_duplicates(keep="first").reset_index(drop=True)
-print("Shape sau khi xóa trùng:", df.shape)        # (283726, 31)
-assert len(df) == 283726
+    cleaned = clean(raw)
+    if len(cleaned) != config.EXPECTED_N_CLEAN:
+        raise ValueError(
+            f"Expected {config.EXPECTED_N_CLEAN} rows after deduplication, got {len(cleaned)}."
+        )
+    if int(cleaned[config.TARGET_COL].sum()) != config.EXPECTED_FRAUD_CLEAN:
+        raise ValueError(
+            "Expected 473 fraud cases after deduplication, got "
+            f"{int(cleaned[config.TARGET_COL].sum())}."
+        )
 
-# ---------- Bước 3: Chia 80/20 Stratified và lưu parquet ----------
-X = df.drop(columns="Class")
-y = df["Class"]
+    X_train, X_test, y_train, y_test = split_data(cleaned)
+    save_processed(X_train, X_test, y_train, y_test)
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, stratify=y, random_state=SEED
-)
+    summary = summarize_preprocess(raw, cleaned, y_train, y_test)
+    pd.DataFrame([summary]).to_csv(
+        config.METRICS_DIR / "preprocess_summary.csv", index=False
+    )
+    print(pd.DataFrame([summary]).to_string(index=False))
+    print(f"Saved processed data to {config.DATA_PROCESSED}")
 
-train = pd.concat([X_train, y_train], axis=1).reset_index(drop=True)
-test = pd.concat([X_test, y_test], axis=1).reset_index(drop=True)
 
-train.to_parquet(OUT_DIR / "train.parquet", index=False)
-test.to_parquet(OUT_DIR / "test.parquet", index=False)
-
-print("Train:", train.shape, "| tỉ lệ gian lận: %.4f%%" % (train["Class"].mean() * 100))
-print("Test :", test.shape, "| tỉ lệ gian lận: %.4f%%" % (test["Class"].mean() * 100))
+if __name__ == "__main__":
+    main()
