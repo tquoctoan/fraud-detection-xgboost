@@ -28,7 +28,7 @@ def fetch_raw() -> Path:
         parser="auto",
     )
     if dataset.frame is None:
-        raise ValueError(f"OpenML ID {config.OPENML_ID} không trả về dữ liệu dạng bảng.")
+        raise ValueError(f"OpenML dataset {config.OPENML_ID} did not provide a dataframe")
 
     frame = dataset.frame.copy()
     _validate_columns(frame)
@@ -50,14 +50,14 @@ def load_raw() -> pd.DataFrame:
 def _validate_columns(df: pd.DataFrame) -> None:
     if "Time" not in df.columns:
         raise ValueError(
-            "Thiếu cột bắt buộc 'Time'; cần đủ 31 cột để xóa dòng trùng chính xác."
+            "Missing required 'Time' column; duplicate removal must use all 31 columns."
         )
     missing_columns = [column for column in EXPECTED_COLUMNS if column not in df.columns]
     extra_columns = [column for column in df.columns if column not in EXPECTED_COLUMNS]
     if missing_columns or extra_columns or len(df.columns) != len(EXPECTED_COLUMNS):
         raise ValueError(
-            "Dữ liệu phải có đúng 31 cột của bộ thẻ tín dụng "
-            f"(thiếu={missing_columns}, không mong đợi={extra_columns})."
+            "Expected exactly the 31 credit-card columns "
+            f"(missing={missing_columns}, unexpected={extra_columns})."
         )
 
 
@@ -69,7 +69,7 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     missing_columns = missing[missing > 0]
     if not missing_columns.empty:
         raise ValueError(
-            "Phát hiện giá trị thiếu trong dữ liệu gốc: "
+            "Missing values found in raw data: "
             f"{missing_columns.to_dict()}"
         )
 
@@ -77,9 +77,9 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
         cleaned[config.TARGET_COL], errors="raise"
     )
     if not cleaned[config.TARGET_COL].isin([0, 1]).all():
-        raise ValueError("Class chỉ được chứa hai nhãn 0 và 1.")
+        raise ValueError("Class must contain only the binary labels 0 and 1.")
     if not (cleaned[config.TARGET_COL] % 1 == 0).all():
-        raise ValueError("Class chứa nhãn không phải số nguyên.")
+        raise ValueError("Class contains non-integer label values.")
     cleaned[config.TARGET_COL] = cleaned[config.TARGET_COL].astype("int64")
 
     n_duplicates = int(cleaned.duplicated().sum())
@@ -155,9 +155,9 @@ def load_processed() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     expected = EXPECTED_COLUMNS
     for name, frame in (("train", train), ("test", test)):
         if frame.columns.tolist() != expected:
-            raise ValueError(f"Tệp parquet {name} phải có đủ 31 cột theo quy định.")
+            raise ValueError(f"{name} parquet must contain the 31 expected columns.")
         if not pd.api.types.is_integer_dtype(frame[config.TARGET_COL]):
-            raise ValueError(f"Cột Class trong tệp parquet {name} phải có kiểu số nguyên.")
+            raise ValueError(f"{name} Class column must have an integer dtype.")
     return (
         train[config.FEATURE_COLS],
         test[config.FEATURE_COLS],
