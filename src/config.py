@@ -171,3 +171,4 @@ def ensure_dirs() -> None:
         FIGURES_DIR,
     ):
         d.mkdir(parents=True, exist_ok=True)
+

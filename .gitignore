@@ -17,7 +17,9 @@ data/
 results/models/
 *.joblib
 
-# Scratch cá nhân
+# Scratch 
+
 scratch/
 .vscode/
 .idea/
+report/
