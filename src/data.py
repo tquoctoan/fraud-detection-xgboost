@@ -18,7 +18,7 @@ def fetch_raw() -> Path:
     """Keep an existing raw CSV or download OpenML 1597 with the Time column."""
     config.ensure_dirs()
     if config.RAW_CSV.exists():
-        logger.info("Using existing raw CSV: %s", config.RAW_CSV)
+        logger.info("Sử dụng tệp dữ liệu gốc có sẵn: %s", config.RAW_CSV)
         return config.RAW_CSV
 
     dataset = fetch_openml(
@@ -28,7 +28,7 @@ def fetch_raw() -> Path:
         parser="auto",
     )
     if dataset.frame is None:
-        raise ValueError(f"OpenML dataset {config.OPENML_ID} did not provide a dataframe")
+        raise ValueError(f"OpenML ID {config.OPENML_ID} không trả về dữ liệu dạng bảng.")
 
     frame = dataset.frame.copy()
     _validate_columns(frame)
@@ -37,7 +37,7 @@ def fetch_raw() -> Path:
         frame[config.TARGET_COL], errors="raise"
     ).astype("int64")
     frame.to_csv(config.RAW_CSV, index=False)
-    logger.info("Downloaded raw data to %s (%s)", config.RAW_CSV, frame.shape)
+    logger.info("Đã tải dữ liệu gốc về %s (%s)", config.RAW_CSV, frame.shape)
     return config.RAW_CSV
 
 
@@ -50,14 +50,14 @@ def load_raw() -> pd.DataFrame:
 def _validate_columns(df: pd.DataFrame) -> None:
     if "Time" not in df.columns:
         raise ValueError(
-            "Missing required 'Time' column; duplicate removal must use all 31 columns."
+            "Thiếu cột bắt buộc 'Time'; cần đủ 31 cột để xóa dòng trùng chính xác."
         )
     missing_columns = [column for column in EXPECTED_COLUMNS if column not in df.columns]
     extra_columns = [column for column in df.columns if column not in EXPECTED_COLUMNS]
     if missing_columns or extra_columns or len(df.columns) != len(EXPECTED_COLUMNS):
         raise ValueError(
-            "Expected exactly the 31 credit-card columns "
-            f"(missing={missing_columns}, unexpected={extra_columns})."
+            "Dữ liệu phải có đúng 31 cột của bộ thẻ tín dụng "
+            f"(thiếu={missing_columns}, không mong đợi={extra_columns})."
         )
 
 
@@ -69,7 +69,7 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     missing_columns = missing[missing > 0]
     if not missing_columns.empty:
         raise ValueError(
-            "Missing values found in raw data: "
+            "Phát hiện giá trị thiếu trong dữ liệu gốc: "
             f"{missing_columns.to_dict()}"
         )
 
@@ -77,16 +77,16 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
         cleaned[config.TARGET_COL], errors="raise"
     )
     if not cleaned[config.TARGET_COL].isin([0, 1]).all():
-        raise ValueError("Class must contain only the binary labels 0 and 1.")
+        raise ValueError("Class chỉ được chứa hai nhãn 0 và 1.")
     if not (cleaned[config.TARGET_COL] % 1 == 0).all():
-        raise ValueError("Class contains non-integer label values.")
+        raise ValueError("Class chứa nhãn không phải số nguyên.")
     cleaned[config.TARGET_COL] = cleaned[config.TARGET_COL].astype("int64")
 
     n_duplicates = int(cleaned.duplicated().sum())
     result = cleaned.drop_duplicates(keep="first").reset_index(drop=True)
     logger.info(
-        "Validated %d rows; missing values=0; removed %d duplicate rows; "
-        "%d rows remain (%d fraud).",
+        "Đã kiểm tra %d dòng; giá trị thiếu=0; đã xóa %d dòng trùng; "
+        "còn %d dòng (%d gian lận).",
         len(cleaned),
         n_duplicates,
         len(result),
@@ -155,9 +155,9 @@ def load_processed() -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     expected = EXPECTED_COLUMNS
     for name, frame in (("train", train), ("test", test)):
         if frame.columns.tolist() != expected:
-            raise ValueError(f"{name} parquet must contain the 31 expected columns.")
+            raise ValueError(f"Tệp parquet {name} phải có đủ 31 cột theo quy định.")
         if not pd.api.types.is_integer_dtype(frame[config.TARGET_COL]):
-            raise ValueError(f"{name} Class column must have an integer dtype.")
+            raise ValueError(f"Cột Class trong tệp parquet {name} phải có kiểu số nguyên.")
     return (
         train[config.FEATURE_COLS],
         test[config.FEATURE_COLS],
