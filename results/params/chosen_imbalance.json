@@ -1,0 +1,4 @@
+{
+  "imbalance": "weight",
+  "reason": "PR-AUC trung bình cao nhất thuộc về 'smote' (0.8585 ± 0.0346). Các kỹ thuật nằm trong khoảng 1 độ lệch chuẩn gồm: ['none', 'weight', 'smote']. Theo quy tắc Parsimony và độ ổn định tính toán (thứ tự ưu tiên ['weight', 'none', 'under', 'smote']), kỹ thuật 'weight' được lựa chọn vì mang lại sự cân bằng tối ưu giữa hiệu năng và độ phức tạp tính toán."
+}
