@@ -1,0 +1,4 @@
+{
+  "imbalance": "weight",
+  "reason": "PR-AUC cao nhất: smote (0.8585). Các cách chênh nhỏ hơn 1 độ lệch chuẩn (0.0346) coi là tương đương: ['none', 'weight', 'smote']. Chọn weight theo thứ tự ưu tiên ['weight', 'none', 'under', 'smote'] (đơn giản hơn khi ngang nhau)."
+}
