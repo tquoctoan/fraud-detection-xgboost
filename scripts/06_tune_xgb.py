@@ -70,7 +70,7 @@ def main() -> None:
     print(f"3. Model comparison: {config.METRICS_DIR / 'tuning_compare.csv'}")
     print(
         "4. Optimization history: "
-        f"{config.RESULTS / 'figures' / '06_optimization_history.png'}"
+        f"{config.FIGURES_DIR / '06_optimization_history.png'}"
     )
 
 

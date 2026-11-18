@@ -1,9 +1,9 @@
-
 """Optuna/TPE hyperparameter tuning for the project's XGBoost pipeline."""
 from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 
 import optuna
 import pandas as pd
@@ -100,7 +100,10 @@ def objective_factory(X_train, y_train, imbalance: str):
     return objective
 
 
-def save_optimization_history(study: optuna.Study):
+def save_optimization_history(
+    study: optuna.Study,
+    path: Path | str | None = None,
+) -> Path:
     """Save trial PR-AUC and cumulative best PR-AUC as a PNG chart."""
     import matplotlib
 
@@ -128,10 +131,12 @@ def save_optimization_history(study: optuna.Study):
         current_best = max(current_best, score)
         best_scores.append(current_best)
 
-    output_dir = config.RESULTS / "figures"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    output_path = output_dir / "06_optimization_history.png"
+    output_path = (
+        Path(path)
+        if path is not None
+        else config.FIGURES_DIR / "06_optimization_history.png"
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
@@ -163,6 +168,32 @@ def save_optimization_history(study: optuna.Study):
     logger.info("Đã lưu biểu đồ optimization history: %s", output_path)
 
     return output_path
+
+
+# Alias matching QUY_DINH_CHUNG.md specification
+plot_optimization_history = save_optimization_history
+
+
+def save_params(result: dict, path: Path | str = config.BEST_PARAMS_PATH) -> Path:
+    """Save best parameters dictionary to JSON file."""
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return output_path
+
+
+def load_params(path: Path | str = config.BEST_PARAMS_PATH) -> dict:
+    """Load best parameters from JSON file."""
+    target = Path(path)
+    if not target.exists():
+        raise FileNotFoundError(
+            f"Không tìm thấy {target}. File này do P4 tạo bằng scripts/06_tune_xgb.py."
+        )
+    with target.open(encoding="utf-8") as handle:
+        return json.load(handle)
 
 
 def save_tuning_comparison(
@@ -211,6 +242,13 @@ def save_tuning_comparison(
         row["fit_time_mean_sec"] = summary["fit_time_mean"]
         rows.append(row)
 
+    if len(rows) >= 2:
+        base_score = rows[0]["pr_auc_mean"]
+        opt_score = rows[1]["pr_auc_mean"]
+        imp = ((opt_score - base_score) / base_score) * 100 if base_score != 0 else 0.0
+        rows[0]["improvement_pct"] = 0.0
+        rows[1]["improvement_pct"] = imp
+
     comparison_df = pd.DataFrame(rows)
 
     output_path = config.METRICS_DIR / "tuning_compare.csv"
@@ -258,6 +296,9 @@ def run_tuning(X_train, y_train, n_trials: int | None = None) -> dict:
         "imbalance": imbalance,
         "scale": False,
         "params": study.best_params,
+        "cv_pr_auc_mean": float(study.best_value),
+        "cv_pr_auc_std": float(study.best_trial.user_attrs.get("pr_auc_std", 0.0)),
+        "seed": config.SEED,
         "best_pr_auc_cv": float(study.best_value),
         "best_trial_number": int(study.best_trial.number),
         "n_trials": len(study.trials),
@@ -267,10 +308,7 @@ def run_tuning(X_train, y_train, n_trials: int | None = None) -> dict:
     }
 
     # 1. Lưu siêu tham số tốt nhất.
-    config.BEST_PARAMS_PATH.write_text(
-        json.dumps(best, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    save_params(best, config.BEST_PARAMS_PATH)
 
     # 2. Lưu lịch sử các trial.
     trials_path = config.METRICS_DIR / "tuning_trials.csv"

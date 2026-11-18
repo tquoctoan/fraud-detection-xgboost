@@ -11,6 +11,9 @@
     "gamma": 1.4142225942849924,
     "reg_lambda": 2.57152430521184
   },
+  "cv_pr_auc_mean": 0.8569392567372125,
+  "cv_pr_auc_std": 0.02951376920679925,
+  "seed": 42,
   "best_pr_auc_cv": 0.8569392567372125,
   "best_trial_number": 32,
   "n_trials": 50,
